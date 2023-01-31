@@ -21,17 +21,8 @@ public class Board : MonoBehaviour {
         }
     }
 
-    public int _score { get; private set; }
-
-    private void Awake() {
-        activePiece = GetComponentInChildren<Piece>();
-
-        _score = 0;
-
-        for (int i = 0; i < tetrominoes.Length; i++) {
-            tetrominoes[i].Initialize();
-        }
-    }
+    public int Score { get; private set; }
+    public int HighScore { get; private set; }
 
     void Start() => ChangeState(GameState.SETUP);
 
@@ -57,7 +48,15 @@ public class Board : MonoBehaviour {
     }
 
     public void HandleStarting() {
-        // no setup required
+        activePiece = GetComponentInChildren<Piece>();
+
+        _gameUI.SetHighScoreTextOff();
+
+        Score = 0;
+
+        for (int i = 0; i < tetrominoes.Length; i++) {
+            tetrominoes[i].Initialize();
+        }
 
         ChangeState(GameState.RUNNING);
     }
@@ -65,16 +64,9 @@ public class Board : MonoBehaviour {
     public void HandleRunning() {
         SpawnPiece();
     }
-
-    public void HandleLosing() {
-        GameOver();
-    }
     
-
     public void SpawnPiece() {
-
         if (State != GameState.LOSE) {
-            
             int random = UnityEngine.Random.Range(0, tetrominoes.Length);
             TetrominoData data = tetrominoes[random];
 
@@ -87,13 +79,29 @@ public class Board : MonoBehaviour {
             }
         }
     }
+    public void HandleLosing() {
+        GameOver();
+    }
 
     public void GameOver() {
         _tileMap.ClearAllTiles();
 
         State = GameState.LOSE;
 
-        _gameUI.SetGameOverScore(_score.ToString());
+        Debug.Log("Highscore: " + HighScore);
+
+        PlayerPrefs.GetInt("HighScore", HighScore);
+
+        Debug.Log("Highscore: " + HighScore);
+
+        if (HighScore <= Score) {
+            HighScore = Score;
+            PlayerPrefs.SetInt("HighScore", HighScore);
+            PlayerPrefs.Save();
+            Debug.Log("Highscore: " + HighScore);
+        }
+
+        _gameUI.SetGameOverScore(Score.ToString(), HighScore.ToString());
     }
 
     public void Set(Piece piece) {
@@ -179,13 +187,13 @@ public class Board : MonoBehaviour {
     }
 
     public void PieceSetUpdateScore() {
-        _score += 4;
-        _gameUI.SetScoreText(_score.ToString());
+        Score += 4;
+        _gameUI.SetScoreText(Score.ToString());
     }
 
     public void RowClearUpdateScore() {
-        _score += 100;
-        _gameUI.SetScoreText(_score.ToString());
+        Score += 100;
+        _gameUI.SetScoreText(Score.ToString());
     }
 
 }
