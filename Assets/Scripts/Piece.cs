@@ -36,50 +36,43 @@ public class Piece : MonoBehaviour {
 
     private void Update() {
 
-        board.Clear(this);
+        if (board.State != GameState.LOSE) {
 
-        // We use a timer to allow the player to make adjustments to the piece
-        // before it locks in place
-        lockTime += Time.deltaTime;
+            board.Clear(this);
 
-        // Handle rotation
-        if (Input.GetKeyDown(KeyCode.Q)) {
-            Rotate(-1);
-        } else if (Input.GetKeyDown(KeyCode.E)) {
-            Rotate(1);
+            lockTime += Time.deltaTime;
+
+            if (Input.GetKeyDown(KeyCode.Q)) {
+                Rotate(-1);
+            } else if (Input.GetKeyDown(KeyCode.E)) {
+                Rotate(1);
+            }
+
+            if (Input.GetKeyDown(KeyCode.Space)) {
+                HardDrop();
+            }
+
+            if (Time.time > moveTime) {
+                HandleMoveInputs();
+            }
+
+            if (Time.time > stepTime) {
+                Step();
+            }
+
+            board.Set(this);
+
         }
-
-        // Handle hard drop
-        if (Input.GetKeyDown(KeyCode.Space)) {
-            HardDrop();
-        }
-
-        // Allow the player to hold movement keys but only after a move delay
-        // so it does not move too fast
-        if (Time.time > moveTime) {
-            HandleMoveInputs();
-        }
-
-        // Advance the piece to the next row every x seconds
-        if (Time.time > stepTime) {
-            Step();
-        }
-
-        board.Set(this);
     }
 
     private void HandleMoveInputs() {
 
-        // Soft drop movement
-        if (Input.GetKey(KeyCode.DownArrow))
-        {
+        if (Input.GetKey(KeyCode.DownArrow)) {
             if (Move(Vector2Int.down)) {
-                // Update the step time to prevent double movement
                 stepTime = Time.time + stepDelay;
             }
         }
 
-        // Left/right movement
         if (Input.GetKey(KeyCode.LeftArrow)) {
             Move(Vector2Int.left);
         } else if (Input.GetKey(KeyCode.RightArrow)) {
@@ -90,10 +83,8 @@ public class Piece : MonoBehaviour {
     private void Step() {
         stepTime = Time.time + stepDelay;
 
-        // Step down to the next row
         Move(Vector2Int.down);
 
-        // Once the piece has been inactive for too long it becomes locked
         if (lockTime >= lockDelay) {
             Lock();
         }
@@ -109,10 +100,9 @@ public class Piece : MonoBehaviour {
 
     private void Lock() {
         board.Set(this);
+        board.PieceSetUpdateScore();
         board.ClearLines();
         board.SpawnPiece();
-
-        board.UpdateScore();
     }
 
     private bool Move(Vector2Int translation) {
@@ -122,26 +112,21 @@ public class Piece : MonoBehaviour {
 
         bool valid = board.IsValidPosition(this, newPosition);
 
-        // Only save the movement if the new position is valid
         if (valid) {
             position = newPosition;
             moveTime = Time.time + moveDelay;
-            lockTime = 0f; // reset
+            lockTime = 0f;
         }
 
         return valid;
     }
 
     private void Rotate(int direction) {
-        // Store the current rotation in case the rotation fails
-        // and we need to revert
         int originalRotation = rotationIndex;
 
-        // Rotate all of the cells using a rotation matrix
         rotationIndex = Wrap(rotationIndex + direction, 0, 4);
         ApplyRotationMatrix(direction);
 
-        // Revert the rotation if the wall kick tests fail
         if (!TestWallKicks(rotationIndex, direction)) {
             rotationIndex = originalRotation;
             ApplyRotationMatrix(-direction);
@@ -151,7 +136,6 @@ public class Piece : MonoBehaviour {
     private void ApplyRotationMatrix(int direction) {
         float[] matrix = Data.RotationMatrix;
 
-        // Rotate all of the cells using the rotation matrix
         for (int i = 0; i < cells.Length; i++) {
             Vector3 cell = cells[i];
 
@@ -160,7 +144,6 @@ public class Piece : MonoBehaviour {
             switch (data.tetromino) {
                 case Tetromino.I:
                 case Tetromino.O:
-                    // "I" and "O" are rotated from an offset center point
                     cell.x -= 0.5f;
                     cell.y -= 0.5f;
                     x = Mathf.CeilToInt((cell.x * matrix[0] * direction) + (cell.y * matrix[1] * direction));

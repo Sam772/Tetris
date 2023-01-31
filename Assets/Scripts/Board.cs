@@ -1,15 +1,18 @@
+using System;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
-public class Board : MonoBehaviour
-{
-    public Tilemap tilemap { get; private set; }
-    public Piece activePiece { get; private set; }
+public class Board : MonoBehaviour {
 
+    public Piece activePiece { get; private set; }
     public TetrominoData[] tetrominoes;
     public Vector2Int boardSize = new Vector2Int(10, 20);
     public Vector3Int spawnPosition = new Vector3Int(-1, 8, 0);
-    [SerializeField] private ScoreGUI _scoreGUI;
+    [SerializeField] private GameUI _gameUI;
+    [SerializeField] private Tilemap _tileMap;
+    public GameState State { get; private set; }
+    public static event Action<GameState> OnBeforeStateChanged;
+    public static event Action<GameState> OnAfterStateChanged;
 
     public RectInt Bounds {
         get {
@@ -21,7 +24,6 @@ public class Board : MonoBehaviour
     public int _score { get; private set; }
 
     private void Awake() {
-        tilemap = GetComponentInChildren<Tilemap>();
         activePiece = GetComponentInChildren<Piece>();
 
         _score = 0;
@@ -31,57 +33,94 @@ public class Board : MonoBehaviour
         }
     }
 
-    private void Start() => SpawnPiece();
+    void Start() => ChangeState(GameState.SETUP);
+
+    public void ChangeState(GameState newState) {
+        OnBeforeStateChanged?.Invoke(newState);
+
+        State = newState;
+        switch (newState) {
+            case GameState.SETUP:
+                HandleStarting();
+                break;
+            case GameState.RUNNING:
+                HandleRunning();
+                break;
+            case GameState.LOSE:
+                HandleLosing();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(newState), newState, null);
+        }
+
+        OnAfterStateChanged?.Invoke(newState);
+    }
+
+    public void HandleStarting() {
+        // no setup required
+
+        ChangeState(GameState.RUNNING);
+    }
+
+    public void HandleRunning() {
+        SpawnPiece();
+    }
+
+    public void HandleLosing() {
+        GameOver();
+    }
     
 
     public void SpawnPiece() {
-        int random = Random.Range(0, tetrominoes.Length);
-        TetrominoData data = tetrominoes[random];
 
-        activePiece.Initialize(this, spawnPosition, data);
+        if (State != GameState.LOSE) {
+            
+            int random = UnityEngine.Random.Range(0, tetrominoes.Length);
+            TetrominoData data = tetrominoes[random];
 
-        if (IsValidPosition(activePiece, spawnPosition)) {
-            Set(activePiece);
-        } else {
-            GameOver();
+            activePiece.Initialize(this, spawnPosition, data);
+
+            if (IsValidPosition(activePiece, spawnPosition)) {
+                Set(activePiece);
+            } else {
+                ChangeState(GameState.LOSE);
+            }
         }
     }
 
     public void GameOver() {
-        tilemap.ClearAllTiles();
+        _tileMap.ClearAllTiles();
 
-        _scoreGUI.SetGameOverScore(_score.ToString());
+        State = GameState.LOSE;
+
+        _gameUI.SetGameOverScore(_score.ToString());
     }
 
     public void Set(Piece piece) {
         for (int i = 0; i < piece.cells.Length; i++) {
             Vector3Int tilePosition = piece.cells[i] + piece.position;
-            tilemap.SetTile(tilePosition, piece.data.tile);
+            _tileMap.SetTile(tilePosition, piece.data.tile);
         }
     }
 
     public void Clear(Piece piece) {
         for (int i = 0; i < piece.cells.Length; i++) {
             Vector3Int tilePosition = piece.cells[i] + piece.position;
-            tilemap.SetTile(tilePosition, null);
+            _tileMap.SetTile(tilePosition, null);
         }
     }
 
     public bool IsValidPosition(Piece piece, Vector3Int position) {
         RectInt bounds = Bounds;
 
-        // The position is only valid if every cell is valid
-        for (int i = 0; i < piece.cells.Length; i++)
-        {
+        for (int i = 0; i < piece.cells.Length; i++) {
             Vector3Int tilePosition = piece.cells[i] + position;
 
-            // An out of bounds tile is invalid
             if (!bounds.Contains((Vector2Int)tilePosition)) {
                 return false;
             }
 
-            // A tile already occupies the position, thus invalid
-            if (tilemap.HasTile(tilePosition)) {
+            if (_tileMap.HasTile(tilePosition)) {
                 return false;
             }
         }
@@ -93,15 +132,11 @@ public class Board : MonoBehaviour
         RectInt bounds = Bounds;
         int row = bounds.yMin;
 
-        // Clear from bottom to top
         while (row < bounds.yMax) {
-            // Only advance to the next row if the current is not cleared
-            // because the tiles above will fall down when a row is cleared
+
             if (IsLineFull(row)) {
                 LineClear(row);
-                _score += 100;
-                _scoreGUI.SetScoreText(_score.ToString());
-                Debug.Log("Score: " + _score);
+                RowClearUpdateScore();
             } else {
                 row++;
             }
@@ -114,8 +149,7 @@ public class Board : MonoBehaviour
         for (int col = bounds.xMin; col < bounds.xMax; col++) {
             Vector3Int position = new Vector3Int(col, row, 0);
 
-            // The line is not full if a tile is missing
-            if (!tilemap.HasTile(position)) {
+            if (!_tileMap.HasTile(position)) {
                 return false;
             }
         }
@@ -126,32 +160,38 @@ public class Board : MonoBehaviour
     public void LineClear(int row) {
         RectInt bounds = Bounds;
 
-        // Clear all tiles in the row
         for (int col = bounds.xMin; col < bounds.xMax; col++) {
             Vector3Int position = new Vector3Int(col, row, 0);
-            tilemap.SetTile(position, null);
+            _tileMap.SetTile(position, null);
         }
 
-        // Shift every row above down one
         while (row < bounds.yMax) {
             for (int col = bounds.xMin; col < bounds.xMax; col++) {
                 Vector3Int position = new Vector3Int(col, row + 1, 0);
-                TileBase above = tilemap.GetTile(position);
+                TileBase above = _tileMap.GetTile(position);
 
                 position = new Vector3Int(col, row, 0);
-                tilemap.SetTile(position, above);
+                _tileMap.SetTile(position, above);
             }
 
             row++;
         }
     }
 
-    public void UpdateScore() {
+    public void PieceSetUpdateScore() {
         _score += 4;
-
-        _scoreGUI.SetScoreText(_score.ToString());
-
-        Debug.Log("Score: " + _score);
+        _gameUI.SetScoreText(_score.ToString());
     }
 
+    public void RowClearUpdateScore() {
+        _score += 100;
+        _gameUI.SetScoreText(_score.ToString());
+    }
+
+}
+
+public enum GameState {
+    SETUP = 0,
+    RUNNING = 1,
+    LOSE = 2,
 }
